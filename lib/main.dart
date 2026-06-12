@@ -1,4 +1,4 @@
-// lib/main.dart (partie corrigée)
+// lib/main.dart
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -20,7 +20,56 @@ import 'package:thix_id/providers/news_provider.dart';
 import 'package:thix_id/services/notification_service.dart';
 import 'package:thix_id/services/notification_counters_service.dart';
 
-// ... main() reste identique ...
+/// Main entry point for the application
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    debugPrint('FlutterError: ${details.exceptionAsString()}');
+    if (details.stack != null) debugPrint(details.stack.toString());
+  };
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    debugPrint('ErrorWidget: ${details.exceptionAsString()}');
+    if (details.stack != null) debugPrint(details.stack.toString());
+    return Material(
+      color: Colors.transparent,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            'Une erreur est survenue.\n\n${kDebugMode ? details.exceptionAsString() : ''}',
+            textAlign: TextAlign.center,
+          ),
+        ),
+      ),
+    );
+  };
+
+  try {
+    await SupabaseConfig.initialize();
+  } catch (e, st) {
+    debugPrint('Main: SupabaseConfig.initialize failed err=$e');
+    debugPrint(st.toString());
+  }
+
+  final auth = AuthController(auth: SupabaseAuthManager());
+  try {
+    await auth.init();
+  } catch (e, st) {
+    debugPrint('Main: auth.init failed err=$e');
+    debugPrint(st.toString());
+  }
+  runApp(MyApp(auth: auth));
+}
+
+class MyApp extends StatefulWidget {
+  final AuthController auth;
+  const MyApp({super.key, required this.auth});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
 
 class _MyAppState extends State<MyApp> {
   late final LocaleController _localeController;
@@ -76,8 +125,7 @@ class _MyAppState extends State<MyApp> {
               previous ?? NewsProvider(newsService),
         ),
         
-        // ✅ CORRIGÉ: NotificationService n'est pas un ChangeNotifier
-        // Utiliser Provider simple au lieu de ChangeNotifierProvider
+        // Notification services (ne sont pas des ChangeNotifier)
         Provider<NotificationService>.value(value: NotificationService()),
         Provider<NotificationCountersService>.value(value: NotificationCountersService()),
       ],
