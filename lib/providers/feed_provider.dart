@@ -33,10 +33,8 @@ class FeedProvider extends ChangeNotifier {
   // INITIALISATION REALTIME
   // ============================================================
   
-  /// Démarre l'écoute realtime et le polling
   void initRealtime() {
     debugPrint('🎙️ FeedProvider: Initialisation realtime...');
-    
     _setupRealtimeListener();
     _setupAutoRefresh();
   }
@@ -46,7 +44,6 @@ class FeedProvider extends ChangeNotifier {
     _autoRefreshTimer?.cancel();
   }
   
-  /// ✅ CORRIGÉ: Configuration du listener Realtime Supabase
   void _setupRealtimeListener() {
     try {
       if (_supabase == null) {
@@ -54,7 +51,6 @@ class FeedProvider extends ChangeNotifier {
         return;
       }
       
-      // Utiliser la méthode correcte .onPostgresChanges au lieu de .onInsert
       _realtimeChannel = _supabase!
           .channel('public:posts_feed')
           .onPostgresChanges(
@@ -97,30 +93,22 @@ class FeedProvider extends ChangeNotifier {
     }
   }
   
-  /// Configuration du polling automatique (refresh toutes les 10 secondes)
   void _setupAutoRefresh() {
     _autoRefreshTimer?.cancel();
-    
     _autoRefreshTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
-      if (!_isLoading && mounted) {
+      if (!_isLoading) {
         await _autoRefresh();
       }
     });
-    
     debugPrint('✅ FeedProvider: Auto-refresh activé (10s)');
   }
   
-  bool get mounted => true; // Pour compatibilité avec le provider
-  
-  /// Refresh automatique silencieux
   Future<void> _autoRefresh() async {
     try {
       final now = DateTime.now();
-      if (_lastRefresh != null && 
-          now.difference(_lastRefresh!).inSeconds < 3) {
+      if (_lastRefresh != null && now.difference(_lastRefresh!).inSeconds < 3) {
         return;
       }
-      
       _lastRefresh = now;
       await loadFeed(feedType: _currentFeedType);
     } catch (e) {
@@ -128,7 +116,6 @@ class FeedProvider extends ChangeNotifier {
     }
   }
   
-  /// Callback: Nouvelle publication insérée
   void _onPostInserted(dynamic newRecord) {
     try {
       if (newRecord == null) return;
@@ -138,7 +125,6 @@ class FeedProvider extends ChangeNotifier {
       } else {
         jsonData = (newRecord as Map).cast<String, dynamic>();
       }
-      
       final post = NetworkPost.fromJson(jsonData);
       _posts.insert(0, post);
       notifyListeners();
@@ -148,7 +134,6 @@ class FeedProvider extends ChangeNotifier {
     }
   }
   
-  /// Callback: Publication mise à jour
   void _onPostUpdated(dynamic updatedRecord) {
     try {
       if (updatedRecord == null) return;
@@ -158,7 +143,6 @@ class FeedProvider extends ChangeNotifier {
       } else {
         jsonData = (updatedRecord as Map).cast<String, dynamic>();
       }
-      
       final updated = NetworkPost.fromJson(jsonData);
       final index = _posts.indexWhere((p) => p.id == updated.id);
       if (index != -1) {
@@ -171,7 +155,6 @@ class FeedProvider extends ChangeNotifier {
     }
   }
   
-  /// Callback: Publication supprimée
   void _onPostDeleted(dynamic deletedRecord) {
     try {
       if (deletedRecord == null) return;
@@ -181,7 +164,6 @@ class FeedProvider extends ChangeNotifier {
       } else {
         jsonData = (deletedRecord as Map).cast<String, dynamic>();
       }
-      
       final deleted = NetworkPost.fromJson(jsonData);
       _posts.removeWhere((p) => p.id == deleted.id);
       notifyListeners();
@@ -240,19 +222,13 @@ class FeedProvider extends ChangeNotifier {
   Future<bool> createPost(String content, List<String> images) async {
     try {
       debugPrint('📝 FeedProvider: création du post...');
-      
       final postId = await _networkService.createPost(content, images);
-      
       if (postId.isEmpty) {
         debugPrint('❌ FeedProvider: pas d\'ID retourné');
         return false;
       }
-      
       debugPrint('✅ FeedProvider: post créé avec ID: $postId');
-      
       await loadFeed(feedType: _currentFeedType);
-      debugPrint('🔄 FeedProvider: feed rechargé, ${_posts.length} posts');
-      
       return true;
     } catch (e) {
       debugPrint('❌ FeedProvider createPost error: $e');
@@ -266,26 +242,26 @@ class FeedProvider extends ChangeNotifier {
   // INTERACTIONS (LIKE, COMMENTAIRE)
   // ============================================================
   
-  /// ✅ CORRIGÉ: toggleLike avec gestion correcte des propriétés
+  /// ✅ CORRIGÉ: utilise 'isLiked' au lieu de 'isLikedByCurrentUser'
   Future<void> toggleLike(String postId) async {
     try {
       final index = _posts.indexWhere((p) => p.id == postId);
       if (index == -1) return;
       
       final post = _posts[index];
-      final currentLikeStatus = post.isLikedByCurrentUser ?? false;
+      final currentLikeStatus = post.isLiked;  // ← Utilise isLiked
       
       if (currentLikeStatus) {
         await _networkService.unlikePost(postId);
         _posts[index] = post.copyWith(
           likesCount: (post.likesCount - 1).clamp(0, double.infinity).toInt(),
-          isLikedByCurrentUser: false,
+          isLiked: false,  // ← Utilise isLiked
         );
       } else {
         await _networkService.likePost(postId);
         _posts[index] = post.copyWith(
           likesCount: post.likesCount + 1,
-          isLikedByCurrentUser: true,
+          isLiked: true,  // ← Utilise isLiked
         );
       }
       
@@ -295,24 +271,20 @@ class FeedProvider extends ChangeNotifier {
     }
   }
   
-  /// ✅ CORRIGÉ: addComment avec la bonne méthode
+  /// ✅ CORRIGÉ: utilise 'addComment' au lieu de 'addCommentToPost'
   Future<void> addComment(String postId, String comment) async {
     try {
-      final result = await _networkService.addCommentToPost(postId, comment);
+      await _networkService.addComment(postId, comment);  // ← Utilise addComment
       
-      if (result) {
-        final index = _posts.indexWhere((p) => p.id == postId);
-        if (index != -1) {
-          final post = _posts[index];
-          _posts[index] = post.copyWith(
-            commentsCount: post.commentsCount + 1,
-          );
-          notifyListeners();
-        }
-        debugPrint('✅ FeedProvider: Commentaire ajouté');
-      } else {
-        debugPrint('❌ FeedProvider: Échec ajout commentaire');
+      final index = _posts.indexWhere((p) => p.id == postId);
+      if (index != -1) {
+        final post = _posts[index];
+        _posts[index] = post.copyWith(
+          commentsCount: post.commentsCount + 1,
+        );
+        notifyListeners();
       }
+      debugPrint('✅ FeedProvider: Commentaire ajouté');
     } catch (e) {
       debugPrint('❌ FeedProvider addComment error: $e');
     }
