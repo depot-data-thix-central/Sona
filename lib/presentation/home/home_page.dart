@@ -818,13 +818,14 @@ class _PremiumHeader extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 2),
-              Text(
-                'Que voulez-vous faire aujourd'hui ?',
-                style: TextStyle(
-                  color: Colors.white.withOpacity(0.8),
-                  fontSize: 11,
-                ),
-              ),
+const SizedBox(height: 2),
+Text(
+  'Que voulez-vous faire aujourd\'hui ?',
+  style: TextStyle(
+    color: Colors.white.withOpacity(0.8),
+    fontSize: 11,
+  ),
+),
             ],
           ),
         ),
@@ -1397,3 +1398,4 @@ class _NavButton extends StatelessWidget {
     );
   }
 }
+ 
