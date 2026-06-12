@@ -11,20 +11,20 @@ import 'package:thix_id/nav.dart';
 import 'package:thix_id/supabase/supabase_config.dart';
 import 'package:thix_id/theme.dart';
 import 'package:thix_id/services/cart_service.dart';
-import 'package:thix_id/services/network_service.dart';      // ← À AJOUTER
-import 'package:thix_id/providers/feed_provider.dart';       // ← À AJOUTER (à créer)
+import 'package:thix_id/services/network_service.dart';
+import 'package:thix_id/providers/feed_provider.dart';
 
-/// Main entry point for the application
-///
-/// This sets up:
-/// - Provider state management (ThemeProvider, CounterProvider)
-/// - go_router navigation
-/// - Material 3 theming with light/dark modes
-/// - Supabase backend (authentication & database)
+// ✅ AJOUTER CES IMPORTS
+import 'package:thix_id/services/event_service.dart';
+import 'package:thix_id/providers/event_provider.dart';
+import 'package:thix_id/services/news_service.dart';
+import 'package:thix_id/providers/news_provider.dart';
+import 'package:thix_id/services/notification_service.dart';
+import 'package:thix_id/services/notification_counters_service.dart';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Make sure we never end up with an unexplained white screen.
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
     debugPrint('FlutterError: ${details.exceptionAsString()}');
@@ -47,7 +47,6 @@ Future<void> main() async {
     );
   };
 
-  // Initialize Supabase
   try {
     await SupabaseConfig.initialize();
   } catch (e, st) {
@@ -76,15 +75,27 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   late final LocaleController _localeController;
   late final _router;
-  late final NetworkService _networkService;  // ← AJOUTER
+  late final NetworkService _networkService;
+  
+  // ✅ AJOUTER CES SERVICES
+  late final EventService _eventService;
+  late final NewsService _newsService;
+  late final NotificationService _notificationService;
+  late final NotificationCountersService _notificationCountersService;
 
   @override
   void initState() {
     super.initState();
     _localeController = LocaleController()..init();
     
-    // ← AJOUTER : initialiser NetworkService
-    _networkService = NetworkService(SupabaseConfig.client);
+    final supabaseClient = SupabaseConfig.client;
+    
+    // Initialiser tous les services
+    _networkService = NetworkService(supabaseClient);
+    _eventService = EventService(supabaseClient);
+    _newsService = NewsService(supabaseClient);
+    _notificationService = NotificationService();
+    _notificationCountersService = NotificationCountersService();
     
     _router = AppRouter.create(widget.auth, extraRefreshListenable: _localeController);
   }
@@ -98,17 +109,33 @@ class _MyAppState extends State<MyApp> {
         ChangeNotifierProvider.value(value: _localeController),
         ChangeNotifierProvider(create: (_) => CartService()),
         
-        // ========== NOUVEAUX PROVIDERS POUR LE RÉSEAU ==========
-        // Provider simple pour NetworkService (pas de ChangeNotifier)
+        // ✅ Network providers
         Provider<NetworkService>.value(value: _networkService),
-        
-        // FeedProvider qui dépend de NetworkService
         ChangeNotifierProxyProvider<NetworkService, FeedProvider>(
           create: (context) => FeedProvider(_networkService),
           update: (context, networkService, previous) =>
               previous ?? FeedProvider(networkService),
         ),
-        // =======================================================
+        
+        // ✅ AJOUTER EventProvider
+        Provider<EventService>.value(value: _eventService),
+        ChangeNotifierProxyProvider<EventService, EventProvider>(
+          create: (context) => EventProvider(_eventService),
+          update: (context, eventService, previous) =>
+              previous ?? EventProvider(eventService),
+        ),
+        
+        // ✅ AJOUTER NewsProvider
+        Provider<NewsService>.value(value: _newsService),
+        ChangeNotifierProxyProvider<NewsService, NewsProvider>(
+          create: (context) => NewsProvider(_newsService),
+          update: (context, newsService, previous) =>
+              previous ?? NewsProvider(newsService),
+        ),
+        
+        // ✅ AJOUTER Notification services
+        ChangeNotifierProvider.value(value: _notificationService),
+        ChangeNotifierProvider.value(value: _notificationCountersService),
       ],
       child: Builder(
         builder: (context) {
