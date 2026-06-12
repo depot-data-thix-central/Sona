@@ -1,7 +1,7 @@
 // lib/presentation/thix_event/seat_selection_page.dart
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';  // ← AJOUTER CET IMPORT
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../providers/event_provider.dart';
 import '../../models/event_model.dart';
@@ -12,11 +12,13 @@ import 'event_reservation_page.dart';
 class SeatSelectionPage extends StatefulWidget {
   final String eventId;
   final Event? event;
+  final int? requestedQuantity; // ✅ AJOUTÉ: Pour la quantité demandée
 
   const SeatSelectionPage({
     super.key,
     required this.eventId,
     this.event,
+    this.requestedQuantity,
   });
 
   @override
@@ -28,23 +30,52 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
   List<EventSeat> _seats = [];
   List<EventSeat> _selectedSeats = [];
   bool _isLoading = true;
+  bool _isConfirming = false;
   int _availableSeats = 0;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    _seatService = EventSeatService(Supabase.instance.client);  // ✅ Correction
+    _seatService = EventSeatService(Supabase.instance.client);
     _loadSeatMap();
   }
   
+  @override
+  void dispose() {
+    // Libérer les réservations temporaires si nécessaire
+    _releaseTemporaryReservations();
+    super.dispose();
+  }
+
+  Future<void> _releaseTemporaryReservations() async {
+    if (_selectedSeats.isNotEmpty) {
+      final seatIds = _selectedSeats.map((s) => s.id).toList();
+      await _seatService.releaseSeats(widget.eventId, seatIds);
+    }
+  }
+
   Future<void> _loadSeatMap() async {
-    final seats = await _seatService.getSeatMap(widget.eventId);
-    final available = await _seatService.getAvailableSeatsCount(widget.eventId);
     setState(() {
-      _seats = seats;
-      _availableSeats = available;
-      _isLoading = false;
+      _isLoading = true;
+      _error = null;
     });
+    
+    try {
+      final seats = await _seatService.getSeatMap(widget.eventId);
+      final available = await _seatService.getAvailableSeatsCount(widget.eventId);
+      
+      setState(() {
+        _seats = seats;
+        _availableSeats = available;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = 'Impossible de charger le plan des places: $e';
+        _isLoading = false;
+      });
+    }
   }
 
   void _onSeatSelected(EventSeat seat) {
@@ -52,6 +83,17 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
       if (_selectedSeats.contains(seat)) {
         _selectedSeats.remove(seat);
       } else {
+        // Vérifier la limite si demandée
+        if (widget.requestedQuantity != null && 
+            _selectedSeats.length >= widget.requestedQuantity!) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Vous ne pouvez sélectionner que ${widget.requestedQuantity} place(s)'),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+          return;
+        }
         _selectedSeats.add(seat);
       }
     });
@@ -69,20 +111,40 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
       return;
     }
 
-    final seatIds = _selectedSeats.map((s) => s.id).toList();
-    final reserved = await _seatService.reserveSeats(widget.eventId, seatIds);
-    
-    if (reserved && mounted) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => EventReservationPage(
-            eventId: widget.eventId,
-            selectedSeats: _selectedSeats,
-            totalPrice: _totalPrice,
+    setState(() => _isConfirming = true);
+
+    try {
+      final seatIds = _selectedSeats.map((s) => s.id).toList();
+      final reserved = await _seatService.reserveSeats(widget.eventId, seatIds);
+      
+      if (reserved && mounted) {
+        // Naviguer vers la page de réservation
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => EventReservationPage(
+              eventId: widget.eventId,
+              event: widget.event,
+              selectedSeats: _selectedSeats,
+              totalPrice: _totalPrice,
+              quantity: _selectedSeats.length,
+            ),
           ),
-        ),
-      ).then((_) => _loadSeatMap());
+        );
+        // Recharger après retour
+        _loadSeatMap();
+        setState(() => _selectedSeats.clear());
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Erreur lors de la réservation des places')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Erreur: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isConfirming = false);
     }
   }
 
@@ -98,78 +160,116 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text('Choisissez vos places', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        actions: [
+          if (widget.requestedQuantity != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: Center(
+                child: Text(
+                  '${_selectedSeats.length}/${widget.requestedQuantity}',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFFD4AF37)),
+                ),
+              ),
+            ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                // Compteur places disponibles
-                Container(
-                  margin: const EdgeInsets.all(12),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey[200]!),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          : _error != null
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Text('Places disponibles', style: TextStyle(fontSize: 13)),
-                      Text(
-                        '$_availableSeats',
-                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFFD4AF37)),
+                      const Icon(Icons.error_outline, size: 64, color: Colors.grey),
+                      const SizedBox(height: 16),
+                      Text(_error!, style: const TextStyle(color: Colors.grey)),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: _loadSeatMap,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFFD4AF37),
+                          foregroundColor: const Color(0xFF0B1B3D),
+                        ),
+                        child: const Text('Réessayer'),
                       ),
                     ],
                   ),
-                ),
-                // Légende
-                _buildLegend(),
-                // Plan de salle
-                Expanded(
-                  child: _buildSeatMap(),
-                ),
-                // Résumé et validation
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8)],
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
+                )
+              : Column(
+                  children: [
+                    // Compteur places disponibles
+                    Container(
+                      margin: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey[200]!),
+                      ),
+                      child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
+                          const Text('Places disponibles', style: TextStyle(fontSize: 13)),
                           Text(
-                            '${_selectedSeats.length} place(s) sélectionnée(s)',
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                          Text(
-                            '${_totalPrice.toStringAsFixed(0)} FC',
-                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFFD4AF37)),
+                            '$_availableSeats',
+                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFFD4AF37)),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: _selectedSeats.isEmpty ? null : _confirmSelection,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFD4AF37),
-                            foregroundColor: const Color(0xFF0B1B3D),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                          ),
-                          child: const Text('VALIDER', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                        ),
+                    ),
+                    // Légende
+                    _buildLegend(),
+                    // Plan de salle
+                    Expanded(
+                      child: _buildSeatMap(),
+                    ),
+                    // Résumé et validation
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8)],
                       ),
-                    ],
-                  ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                '${_selectedSeats.length} place(s) sélectionnée(s)',
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                              Text(
+                                '${_totalPrice.toStringAsFixed(0)} FCFA',
+                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFFD4AF37)),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: (_selectedSeats.isEmpty || _isConfirming) ? null : _confirmSelection,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFD4AF37),
+                                foregroundColor: const Color(0xFF0B1B3D),
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                              ),
+                              child: _isConfirming
+                                  ? const SizedBox(
+                                      height: 20,
+                                      width: 20,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0B1B3D)),
+                                    )
+                                  : const Text('VALIDER', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
     );
   }
 
@@ -215,6 +315,12 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
   }
 
   Widget _buildSeatMap() {
+    if (_seats.isEmpty) {
+      return const Center(
+        child: Text('Aucune place disponible pour cet événement'),
+      );
+    }
+
     // Grouper les places par rangée
     final Map<String, List<EventSeat>> rows = {};
     for (var seat in _seats) {
@@ -245,6 +351,7 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   SizedBox(
                     width: 30,
@@ -255,8 +362,8 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
                   ),
                   Expanded(
                     child: Wrap(
-                      spacing: 4,
-                      runSpacing: 4,
+                      spacing: 6,
+                      runSpacing: 6,
                       children: rows[row]!.map((seat) {
                         final isSelected = _selectedSeats.contains(seat);
                         final isAvailable = seat.isAvailable;
@@ -270,20 +377,22 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
                         else seatColor = Colors.green;
                         
                         return GestureDetector(
-                          onTap: isAvailable || isSelected ? () => _onSeatSelected(seat) : null,
+                          onTap: (isAvailable || isSelected) && !_isConfirming
+                              ? () => _onSeatSelected(seat)
+                              : null,
                           child: Container(
-                            width: 32,
-                            height: 32,
+                            width: 36,
+                            height: 36,
                             decoration: BoxDecoration(
                               color: seatColor.withOpacity(0.15),
                               border: Border.all(color: seatColor, width: 1.5),
-                              borderRadius: BorderRadius.circular(6),
+                              borderRadius: BorderRadius.circular(8),
                             ),
                             child: Center(
                               child: Text(
                                 seat.number.toString(),
                                 style: TextStyle(
-                                  fontSize: 10,
+                                  fontSize: 11,
                                   fontWeight: FontWeight.bold,
                                   color: seatColor,
                                 ),
@@ -297,17 +406,26 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
                 ],
               ),
             ),
-          // Couloir central
-          Container(
-            margin: const EdgeInsets.symmetric(vertical: 16),
-            height: 20,
-            color: Colors.grey[200],
-            child: const Center(
-              child: Text('COULOIR', style: TextStyle(fontSize: 10, color: Colors.grey)),
+          // Couloir central (si présent)
+          if (_hasCenterAisle)
+            Container(
+              margin: const EdgeInsets.symmetric(vertical: 16),
+              height: 20,
+              color: Colors.grey[200],
+              child: const Center(
+                child: Text('COULOIR', style: TextStyle(fontSize: 10, color: Colors.grey)),
+              ),
             ),
-          ),
+          const SizedBox(height: 20),
         ],
       ),
     );
+  }
+
+  bool get _hasCenterAisle {
+    // Détecter s'il y a un couloir central (si le nombre de places par rangée est pair)
+    if (_seats.isEmpty) return false;
+    final firstRowSeats = _seats.where((s) => s.row == _seats.first.row).length;
+    return firstRowSeats > 8;
   }
 }
