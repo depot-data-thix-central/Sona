@@ -1,4 +1,8 @@
 // lib/presentation/network/network_pro_home.dart
+// ============================================================
+// VERSION CORRIGÉE - SOLUTION 3
+// ============================================================
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -282,14 +286,13 @@ class _NetworkProHomeState extends State<NetworkProHome> with TickerProviderStat
   }
 
   // ============================================================
-  // ✅ CARTE DE POST CORRIGÉE - SOLUTION 3
-  // Utilise uniquement les propriétés existantes dans NetworkPost
+  // ✅ CARTE DE POST CORRIGÉE - AUCUNE RÉFÉRENCE À imageUrl
   // ============================================================
   Widget _buildPostCard(NetworkPost post) {
-    // ✅ Utilisation des propriétés qui existent dans votre modèle
-    final imageUrl = post.mediaUrl;           // mediaUrl au lieu de imageUrl
-    final isLiked = post.isLiked ?? false;    // isLiked au lieu de isLikedByCurrentUser
-    final sharesCount = 0;                    // Valeur par défaut si la propriété n'existe pas
+    // ✅ Utilisation UNIQUEMENT des propriétés existantes
+    final mediaUrl = post.mediaUrl;           // ← mediaUrl (pas imageUrl)
+    final isLiked = post.isLiked ?? false;    // ← isLiked
+    final sharesCount = 0;                    // ← Valeur par défaut
     
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -347,13 +350,13 @@ class _NetworkProHomeState extends State<NetworkProHome> with TickerProviderStat
                 style: const TextStyle(fontSize: 13),
               ),
             
-            // ✅ Image - utilise mediaUrl
-            if (imageUrl != null && imageUrl.isNotEmpty) ...[
+            // ✅ Utilise mediaUrl (pas imageUrl)
+            if (mediaUrl != null && mediaUrl.isNotEmpty) ...[
               const SizedBox(height: 8),
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: Image.network(
-                  imageUrl,
+                  mediaUrl,  // ← mediaUrl
                   height: 200,
                   width: double.infinity,
                   fit: BoxFit.cover,
