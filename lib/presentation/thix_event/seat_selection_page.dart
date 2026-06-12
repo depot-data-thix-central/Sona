@@ -12,7 +12,7 @@ import 'event_reservation_page.dart';
 class SeatSelectionPage extends StatefulWidget {
   final String eventId;
   final Event? event;
-  final int? requestedQuantity; // ✅ AJOUTÉ: Pour la quantité demandée
+  final int? requestedQuantity;
 
   const SeatSelectionPage({
     super.key,
@@ -43,7 +43,6 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
   
   @override
   void dispose() {
-    // Libérer les réservations temporaires si nécessaire
     _releaseTemporaryReservations();
     super.dispose();
   }
@@ -83,7 +82,6 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
       if (_selectedSeats.contains(seat)) {
         _selectedSeats.remove(seat);
       } else {
-        // Vérifier la limite si demandée
         if (widget.requestedQuantity != null && 
             _selectedSeats.length >= widget.requestedQuantity!) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -118,20 +116,17 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
       final reserved = await _seatService.reserveSeats(widget.eventId, seatIds);
       
       if (reserved && mounted) {
-        // Naviguer vers la page de réservation
         await Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => EventReservationPage(
               eventId: widget.eventId,
-              event: widget.event,
               selectedSeats: _selectedSeats,
               totalPrice: _totalPrice,
               quantity: _selectedSeats.length,
             ),
           ),
         );
-        // Recharger après retour
         _loadSeatMap();
         setState(() => _selectedSeats.clear());
       } else {
@@ -197,7 +192,6 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
                 )
               : Column(
                   children: [
-                    // Compteur places disponibles
                     Container(
                       margin: const EdgeInsets.all(12),
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -217,13 +211,8 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
                         ],
                       ),
                     ),
-                    // Légende
                     _buildLegend(),
-                    // Plan de salle
-                    Expanded(
-                      child: _buildSeatMap(),
-                    ),
-                    // Résumé et validation
+                    Expanded(child: _buildSeatMap()),
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
@@ -316,12 +305,9 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
 
   Widget _buildSeatMap() {
     if (_seats.isEmpty) {
-      return const Center(
-        child: Text('Aucune place disponible pour cet événement'),
-      );
+      return const Center(child: Text('Aucune place disponible pour cet événement'));
     }
 
-    // Grouper les places par rangée
     final Map<String, List<EventSeat>> rows = {};
     for (var seat in _seats) {
       rows.putIfAbsent(seat.row, () => []).add(seat);
@@ -333,7 +319,6 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // Scène
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 12),
@@ -346,7 +331,6 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
               child: Text('SCÈNE', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 2)),
             ),
           ),
-          // Plan des places
           for (var row in sortedRows)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
@@ -355,10 +339,7 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
                 children: [
                   SizedBox(
                     width: 30,
-                    child: Text(
-                      row,
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                    ),
+                    child: Text(row, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                   ),
                   Expanded(
                     child: Wrap(
@@ -377,9 +358,7 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
                         else seatColor = Colors.green;
                         
                         return GestureDetector(
-                          onTap: (isAvailable || isSelected) && !_isConfirming
-                              ? () => _onSeatSelected(seat)
-                              : null,
+                          onTap: (isAvailable || isSelected) && !_isConfirming ? () => _onSeatSelected(seat) : null,
                           child: Container(
                             width: 36,
                             height: 36,
@@ -391,11 +370,7 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
                             child: Center(
                               child: Text(
                                 seat.number.toString(),
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: seatColor,
-                                ),
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: seatColor),
                               ),
                             ),
                           ),
@@ -406,26 +381,9 @@ class _SeatSelectionPageState extends State<SeatSelectionPage> {
                 ],
               ),
             ),
-          // Couloir central (si présent)
-          if (_hasCenterAisle)
-            Container(
-              margin: const EdgeInsets.symmetric(vertical: 16),
-              height: 20,
-              color: Colors.grey[200],
-              child: const Center(
-                child: Text('COULOIR', style: TextStyle(fontSize: 10, color: Colors.grey)),
-              ),
-            ),
           const SizedBox(height: 20),
         ],
       ),
     );
-  }
-
-  bool get _hasCenterAisle {
-    // Détecter s'il y a un couloir central (si le nombre de places par rangée est pair)
-    if (_seats.isEmpty) return false;
-    final firstRowSeats = _seats.where((s) => s.row == _seats.first.row).length;
-    return firstRowSeats > 8;
   }
 }
