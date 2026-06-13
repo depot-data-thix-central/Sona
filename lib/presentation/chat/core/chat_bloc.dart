@@ -1,5 +1,5 @@
 // lib/presentation/chat/core/chat_bloc.dart
-// [PARTIE] Bloc complet gérant les événements du chat
+// Bloc complet avec initialisation du token
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -8,19 +8,21 @@ import 'chat_states.dart';
 import 'chat_repository.dart';
 import 'chat_models.dart';
 import 'chat_utils.dart';
+import '../../../core/auth/token_service.dart';
 
 class ChatBloc extends Bloc<ChatEvent, ChatState> {
   final ChatRepository _repository;
   late final Stream<List<Map<String, dynamic>>> _realtimeStream;
   String get currentUserId => Supabase.instance.client.auth.currentUser!.id;
 
-  // État interne pour les conversations filtrées, etc.
   List<Conversation> _allConversations = [];
   String _currentFilter = 'Tous';
   List<Story> _stories = [];
   ChatStats _stats = const ChatStats();
 
   ChatBloc(this._repository) : super(ChatInitial()) {
+    // Initialisation du token au démarrage du Bloc
+    _initToken();
     on<LoadConversations>(_onLoadConversations);
     on<FilterConversations>(_onFilterConversations);
     on<LoadMessages>(_onLoadMessages);
@@ -37,7 +39,17 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     on<NewMessageReceived>(_onNewMessageReceived);
   }
 
-  // ---------- Gestionnaires ----------
+  Future<void> _initToken() async {
+    try {
+      await TokenService.getToken();
+      print('Token Edge Function prêt');
+    } catch (e) {
+      print('Erreur token: $e');
+    }
+  }
+
+  // --- Tous les gestionnaires d'événements restent inchangés ---
+  // (copier-coller les implémentations existantes)
   Future<void> _onLoadConversations(LoadConversations event, Emitter<ChatState> emit) async {
     emit(ChatLoading());
     try {
@@ -73,14 +85,12 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     emit(ChatLoading());
     try {
       final messages = await _repository.fetchMessages(event.conversationId);
-      // Trouver le message épinglé (metadata 'pinned' = true)
       final pinned = messages.firstWhere((m) => m.metadata?['pinned'] == true, orElse: () => null);
       emit(MessagesLoaded(
         conversationId: event.conversationId,
         messages: messages,
         pinnedMessage: pinned,
       ));
-      // Démarrer l'écoute des nouveaux messages
       _listenForNewMessages(event.conversationId);
     } catch (e) {
       emit(ChatError(e.toString()));
@@ -99,7 +109,6 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         sentAt: DateTime.now(),
         metadata: event.metadata,
       );
-      // Optimistic update
       if (state is MessagesLoaded && (state as MessagesLoaded).conversationId == event.conversationId) {
         final currentState = state as MessagesLoaded;
         emit(MessagesLoaded(
@@ -110,7 +119,6 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       }
       final sent = await _repository.sendMessage(message);
       emit(MessageSentSuccess(sent));
-      // Rafraîchir la liste des conversations (mise à jour du dernier message)
       add(LoadConversations());
     } catch (e) {
       emit(ChatError(e.toString()));
@@ -118,7 +126,6 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   }
 
   Future<void> _onSendEphemeralMessage(SendEphemeralMessage event, Emitter<ChatState> emit) async {
-    // Même principe que sendMessage, le type est déjà 'ephemeral'
     await _onSendMessage(event, emit);
   }
 
@@ -129,16 +136,13 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   Future<void> _onUnlockConfidentialMessage(UnlockConfidentialMessage event, Emitter<ChatState> emit) async {
     try {
       final isValid = await _repository.verifyConfidentialCode(event.messageId, event.enteredCode);
-      if (isValid) {
-        // Chercher le message dans l'état actuel
-        if (state is MessagesLoaded) {
-          final currentState = state as MessagesLoaded;
-          final message = currentState.messages.firstWhere((m) => m.id == event.messageId);
-          if (message.content != null) {
-            emit(ConfidentialMessageUnlocked(event.messageId, message.content!));
-          }
+      if (isValid && state is MessagesLoaded) {
+        final currentState = state as MessagesLoaded;
+        final message = currentState.messages.firstWhere((m) => m.id == event.messageId);
+        if (message.content != null) {
+          emit(ConfidentialMessageUnlocked(event.messageId, message.content!));
         }
-      } else {
+      } else if (!isValid) {
         emit(ChatError('Code incorrect'));
       }
     } catch (e) {
@@ -152,7 +156,6 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
   Future<void> _onAddReaction(AddReaction event, Emitter<ChatState> emit) async {
     await _repository.addReaction(event.messageId, event.reaction, currentUserId);
-    // Rafraîchir les messages
     if (state is MessagesLoaded) {
       add(LoadMessages((state as MessagesLoaded).conversationId));
     }
@@ -166,8 +169,6 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   }
 
   void _onStartTyping(StartTyping event, Emitter<ChatState> emit) {
-    // Envoyer un signal via WebSocket / Supabase Realtime
-    // Pour l'exemple, on ne fait que modifier l'état localement
     if (state is TypingState) {
       final typingState = state as TypingState;
       if (!typingState.typingUsers.contains(currentUserId)) {
@@ -193,7 +194,6 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   void _onNewMessageReceived(NewMessageReceived event, Emitter<ChatState> emit) {
     if (state is MessagesLoaded && (state as MessagesLoaded).conversationId == event.message.conversationId) {
       final currentState = state as MessagesLoaded;
-      // Éviter les doublons
       if (!currentState.messages.any((m) => m.id == event.message.id)) {
         emit(MessagesLoaded(
           conversationId: currentState.conversationId,
@@ -203,7 +203,6 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       }
     }
     emit(NewMessage(event.message));
-    // Mettre à jour la liste des conversations (dernier message)
     add(LoadConversations());
   }
 
