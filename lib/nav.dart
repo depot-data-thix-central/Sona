@@ -47,7 +47,7 @@ import 'package:thix_id/presentation/admin/pages/admin_news_dashboard.dart';
 import 'package:thix_id/presentation/admin/pages/admin_news_page.dart';
 import 'package:thix_id/presentation/admin/pages/create_news_page.dart';
 
-// ==================== IMPORTS EXISTANTS ====================
+// ==================== IMPORTS EXISTANTS (non chat) ====================
 import 'presentation/home/home_page.dart';
 import 'presentation/auth/login_page.dart';
 import 'presentation/auth/personal_registration_page.dart';
@@ -59,42 +59,8 @@ import 'presentation/dashboard/user_dashboard_page.dart';
 import 'presentation/enterprise/enterprise_dashboard_page.dart';
 import 'package:thix_id/presentation/enterprise/enterprise_portal_page.dart';
 import 'package:thix_id/presentation/enterprise/enterprise_dashboard_shell_page.dart';
-import 'presentation/chat/thix_chat_page.dart';
 import 'presentation/vault/document_vault_page.dart';
 import 'presentation/settings/settings_page.dart';
-
-// ==================== THIX CHAT - PAGES PRINCIPALES ====================
-import 'package:thix_id/presentation/chat/chat_conversation_page.dart';
-import 'package:thix_id/presentation/chat/chat_status_page.dart';
-import 'package:thix_id/presentation/chat/chat_status_update.dart';
-import 'package:thix_id/presentation/chat/chat_spaces_page.dart';
-import 'package:thix_id/presentation/chat/chat_call_page.dart';
-import 'package:thix_id/presentation/chat/chat_incoming_call.dart';
-
-// ==================== THIX CHAT - FONCTIONNALITÉS ====================
-// Éphémères
-import 'package:thix_id/presentation/chat/ephemeral/ephemeral_settings_page.dart';
-// Traduction
-import 'package:thix_id/presentation/chat/translation/auto_translate_settings.dart';
-// Thèmes
-import 'package:thix_id/presentation/chat/themes/theme_selector_sheet.dart';
-import 'package:thix_id/presentation/chat/themes/bubble_customizer.dart';
-import 'package:thix_id/presentation/chat/themes/notification_sounds_settings.dart';
-import 'package:thix_id/presentation/chat/themes/chat_wallpaper_picker.dart';
-import 'package:thix_id/presentation/chat/themes/font_size_selector.dart';
-import 'package:thix_id/presentation/chat/themes/theme_preview.dart';
-// Statut en ligne
-import 'package:thix_id/presentation/chat/online_status/last_seen_settings.dart';
-import 'package:thix_id/presentation/chat/online_status/availability_schedule.dart';
-import 'package:thix_id/presentation/chat/online_status/status_presets.dart';
-// Archives
-import 'package:thix_id/presentation/chat/archive/archive_page.dart';
-import 'package:thix_id/presentation/chat/archive/export_chat_page.dart';
-// Économiseur de données
-import 'package:thix_id/presentation/chat/data_saver/low_data_mode_toggle.dart';
-// Widgets maison
-import 'package:thix_id/presentation/chat/home_widgets/chat_widget_config.dart';
-import 'package:thix_id/presentation/chat/home_widgets/widget_preview.dart';
 
 // ==================== RÉSEAU PRO ====================
 import 'presentation/network/network_pro_home.dart';
@@ -181,7 +147,6 @@ import 'package:thix_id/presentation/recruiter/recruiter_portal_page.dart';
 import 'package:thix_id/presentation/opportunities/opportunities_page.dart';
 import 'package:thix_id/presentation/opportunities/opportunity_apply_page.dart';
 import 'package:thix_id/presentation/opportunities/opportunity_details_page.dart';
-
 import 'presentation/education/education_page.dart';
 import 'package:thix_id/presentation/training/training_home_page.dart';
 import 'package:thix_id/presentation/training/training_details_page.dart';
@@ -195,6 +160,11 @@ import 'package:thix_id/presentation/thix_market/checkout_page.dart';
 import 'package:thix_id/presentation/thix_market/order_history_page.dart';
 import 'package:thix_id/presentation/thix_media/thix_media_page.dart';
 import 'package:thix_id/presentation/admin/pages/admin_media_page.dart';
+
+// ==================== NOUVEAU CHAT ====================
+import 'package:thix_id/presentation/chat/home_page.dart' as new_chat;
+import 'package:thix_id/presentation/chat/conversation_page.dart' as new_chat_conv;
+import 'package:thix_id/presentation/chat/under_construction_page.dart';
 
 /// Page sans transition (indispensable pour GoRouter)
 class NoTransitionPage<T> extends Page<T> {
@@ -223,13 +193,8 @@ class AppRoutes {
   static const String vault = '/vault';
   static const String settings = '/settings';
   
-  // ==================== THIX CHAT ====================
+  // ==================== THIX CHAT - NOUVELLES ROUTES ====================
   static const String chatConversation = '/chat/conversation/:id';
-  static const String chatStatus = '/chat/status';
-  static const String chatStatusUpdate = '/chat/status/update';
-  static const String chatSpaces = '/chat/spaces';
-  static const String chatCall = '/chat/call';
-  static const String chatIncomingCall = '/chat/incoming';
   static const String ephemeralSettings = '/chat/ephemeral/settings';
   static const String translationSettings = '/chat/translation/settings';
   static const String chatThemes = '/chat/themes';
@@ -246,6 +211,11 @@ class AppRoutes {
   static const String dataSaver = '/chat/data/saver';
   static const String widgetsConfig = '/chat/widgets/config';
   static const String widgetsPreview = '/chat/widgets/preview';
+  static const String chatCall = '/chat/call';
+  static const String chatIncomingCall = '/chat/incoming';
+  static const String chatStatus = '/chat/status';
+  static const String chatStatusUpdate = '/chat/status/update';
+  static const String chatSpaces = '/chat/spaces';
   
   // ==================== RÉSEAU PRO ====================
   static const String networkPro = '/network-pro';
@@ -569,186 +539,134 @@ class AppRouter {
           ],
         ),
         
-        // ==================== THIX CHAT - PRINCIPAL ====================
+        // ==================== THIX CHAT (NOUVEAU) ====================
+        // Page d'accueil du chat
         GoRoute(
           path: AppRoutes.chat,
           name: 'chat',
-          pageBuilder: (context, state) => NoTransitionPage(child: const ThixChatPage()),
+          pageBuilder: (context, state) => NoTransitionPage(child: const new_chat.ChatHomePage()),
         ),
-        
-        // ==================== THIX CHAT - CONVERSATION ====================
+        // Conversation
         GoRoute(
           path: AppRoutes.chatConversation,
           name: 'chatConversation',
           pageBuilder: (context, state) {
             final conversationId = state.pathParameters['id']!;
-            final conversation = state.extra as Conversation?;
-            return NoTransitionPage(
-              child: ChatConversationPage(
-                conversationId: conversationId,
-                conversation: conversation,
-              ),
-            );
+            return NoTransitionPage(child: new_chat_conv.ConversationPage(conversationId: conversationId));
           },
         ),
-        
-        // ==================== THIX CHAT - STATUT ====================
-        GoRoute(
-          path: AppRoutes.chatStatus,
-          name: 'chatStatus',
-          pageBuilder: (context, state) => NoTransitionPage(child: const ChatStatusPage()),
-        ),
-        GoRoute(
-          path: AppRoutes.chatStatusUpdate,
-          name: 'chatStatusUpdate',
-          pageBuilder: (context, state) => NoTransitionPage(child: const ChatStatusUpdatePage()),
-        ),
-        
-        // ==================== THIX CHAT - SPACES ====================
-        GoRoute(
-          path: AppRoutes.chatSpaces,
-          name: 'chatSpaces',
-          pageBuilder: (context, state) => NoTransitionPage(child: const ChatSpacesPage()),
-        ),
-        
-        // ==================== THIX CHAT - APPELS ====================
-        GoRoute(
-          path: AppRoutes.chatCall,
-          name: 'chatCall',
-          pageBuilder: (context, state) {
-            final extra = state.extra as Map?;
-            return NoTransitionPage(
-              child: ChatCallPage(
-                callId: extra?['callId'] ?? '',
-                callName: extra?['callName'] ?? 'Appel',
-                participants: extra?['participants'] ?? [],
-                isVideoCall: extra?['isVideoCall'] ?? false,
-              ),
-            );
-          },
-        ),
-        GoRoute(
-          path: AppRoutes.chatIncomingCall,
-          name: 'chatIncomingCall',
-          pageBuilder: (context, state) {
-            final extra = state.extra as Map?;
-            return NoTransitionPage(
-              child: ChatIncomingCall(
-                callerName: extra?['callerName'] ?? 'Appel entrant',
-                callType: extra?['callType'] ?? 'audio',
-              ),
-            );
-          },
-        ),
-        
-        // ==================== THIX CHAT - ÉPHÉMÈRES ====================
+        // Fonctionnalités secondaires (en construction)
         GoRoute(
           path: AppRoutes.ephemeralSettings,
           name: 'ephemeralSettings',
-          pageBuilder: (context, state) => NoTransitionPage(child: const EphemeralSettingsPage()),
+          pageBuilder: (context, state) => NoTransitionPage(child: UnderConstructionPage(feature: 'Messages éphémères')),
         ),
-        
-        // ==================== THIX CHAT - TRADUCTION ====================
         GoRoute(
           path: AppRoutes.translationSettings,
           name: 'translationSettings',
-          pageBuilder: (context, state) => NoTransitionPage(child: const AutoTranslateSettings()),
+          pageBuilder: (context, state) => NoTransitionPage(child: UnderConstructionPage(feature: 'Traduction automatique')),
         ),
-        
-        // ==================== THIX CHAT - THÈMES ====================
         GoRoute(
           path: AppRoutes.chatThemes,
           name: 'chatThemes',
-          pageBuilder: (context, state) => NoTransitionPage(child: const ThemeSelectorSheet()),
+          pageBuilder: (context, state) => NoTransitionPage(child: UnderConstructionPage(feature: 'Thèmes de chat')),
         ),
         GoRoute(
           path: AppRoutes.bubbleCustomizer,
           name: 'bubbleCustomizer',
-          pageBuilder: (context, state) => NoTransitionPage(child: const BubbleCustomizer()),
+          pageBuilder: (context, state) => NoTransitionPage(child: UnderConstructionPage(feature: 'Personnalisation des bulles')),
         ),
         GoRoute(
           path: AppRoutes.notificationSounds,
           name: 'notificationSounds',
-          pageBuilder: (context, state) => NoTransitionPage(child: const NotificationSoundsSettings()),
+          pageBuilder: (context, state) => NoTransitionPage(child: UnderConstructionPage(feature: 'Sons de notification')),
         ),
         GoRoute(
           path: AppRoutes.chatWallpaper,
           name: 'chatWallpaper',
-          pageBuilder: (context, state) => NoTransitionPage(child: const ChatWallpaperPicker()),
+          pageBuilder: (context, state) => NoTransitionPage(child: UnderConstructionPage(feature: 'Fond d\'écran')),
         ),
         GoRoute(
           path: AppRoutes.fontSize,
           name: 'fontSize',
-          pageBuilder: (context, state) => NoTransitionPage(child: const FontSizeSelector()),
+          pageBuilder: (context, state) => NoTransitionPage(child: UnderConstructionPage(feature: 'Taille de police')),
         ),
         GoRoute(
           path: AppRoutes.themePreview,
           name: 'themePreview',
-          pageBuilder: (context, state) => NoTransitionPage(child: const ThemePreview()),
+          pageBuilder: (context, state) => NoTransitionPage(child: UnderConstructionPage(feature: 'Aperçu du thème')),
         ),
-        
-        // ==================== THIX CHAT - STATUT EN LIGNE ====================
         GoRoute(
           path: AppRoutes.statusSettings,
           name: 'statusSettings',
-          pageBuilder: (context, state) => NoTransitionPage(child: const LastSeenSettings()),
+          pageBuilder: (context, state) => NoTransitionPage(child: UnderConstructionPage(feature: 'Paramètres de statut')),
         ),
         GoRoute(
           path: AppRoutes.availabilitySchedule,
           name: 'availabilitySchedule',
-          pageBuilder: (context, state) => NoTransitionPage(child: const AvailabilitySchedule()),
+          pageBuilder: (context, state) => NoTransitionPage(child: UnderConstructionPage(feature: 'Planification de disponibilité')),
         ),
         GoRoute(
           path: AppRoutes.statusPresets,
           name: 'statusPresets',
-          pageBuilder: (context, state) => NoTransitionPage(child: const StatusPresets()),
+          pageBuilder: (context, state) => NoTransitionPage(child: UnderConstructionPage(feature: 'Préréglages de statut')),
         ),
-        
-        // ==================== THIX CHAT - ARCHIVES ====================
         GoRoute(
           path: AppRoutes.chatArchive,
           name: 'chatArchive',
-          pageBuilder: (context, state) => NoTransitionPage(child: const ArchivePage()),
+          pageBuilder: (context, state) => NoTransitionPage(child: UnderConstructionPage(feature: 'Archives')),
         ),
         GoRoute(
           path: AppRoutes.exportChat,
           name: 'exportChat',
-          pageBuilder: (context, state) {
-            final conversationId = state.pathParameters['id']!;
-            final conversationName = state.uri.queryParameters['name'] ?? 'Conversation';
-            return NoTransitionPage(
-              child: ExportChatPage(
-                conversationId: conversationId,
-                conversationName: conversationName,
-              ),
-            );
-          },
+          pageBuilder: (context, state) => NoTransitionPage(child: UnderConstructionPage(feature: 'Export de conversation')),
         ),
-        
-        // ==================== THIX CHAT - ÉCONOMISEUR ====================
         GoRoute(
           path: AppRoutes.dataSaver,
           name: 'dataSaver',
-          pageBuilder: (context, state) => NoTransitionPage(child: const LowDataModeToggle()),
+          pageBuilder: (context, state) => NoTransitionPage(child: UnderConstructionPage(feature: 'Économie de données')),
         ),
-        
-        // ==================== THIX CHAT - WIDGETS MAISON ====================
         GoRoute(
           path: AppRoutes.widgetsConfig,
           name: 'widgetsConfig',
-          pageBuilder: (context, state) => NoTransitionPage(child: const ChatWidgetConfig()),
+          pageBuilder: (context, state) => NoTransitionPage(child: UnderConstructionPage(feature: 'Configuration widgets')),
         ),
         GoRoute(
           path: AppRoutes.widgetsPreview,
           name: 'widgetsPreview',
-          pageBuilder: (context, state) => NoTransitionPage(child: const WidgetPreview()),
+          pageBuilder: (context, state) => NoTransitionPage(child: UnderConstructionPage(feature: 'Aperçu widgets')),
         ),
-        
+        GoRoute(
+          path: AppRoutes.chatCall,
+          name: 'chatCall',
+          pageBuilder: (context, state) => NoTransitionPage(child: UnderConstructionPage(feature: 'Appel')),
+        ),
+        GoRoute(
+          path: AppRoutes.chatIncomingCall,
+          name: 'chatIncomingCall',
+          pageBuilder: (context, state) => NoTransitionPage(child: UnderConstructionPage(feature: 'Appel entrant')),
+        ),
+        GoRoute(
+          path: AppRoutes.chatStatus,
+          name: 'chatStatus',
+          pageBuilder: (context, state) => NoTransitionPage(child: UnderConstructionPage(feature: 'Statut')),
+        ),
+        GoRoute(
+          path: AppRoutes.chatStatusUpdate,
+          name: 'chatStatusUpdate',
+          pageBuilder: (context, state) => NoTransitionPage(child: UnderConstructionPage(feature: 'Mise à jour statut')),
+        ),
+        GoRoute(
+          path: AppRoutes.chatSpaces,
+          name: 'chatSpaces',
+          pageBuilder: (context, state) => NoTransitionPage(child: UnderConstructionPage(feature: 'Espaces')),
+        ),
+
         // ==================== MESSAGES & PROFIL PRINCIPAUX ====================
         GoRoute(
           path: AppRoutes.messages,
           name: 'messages',
-          pageBuilder: (context, state) => NoTransitionPage(child: const ThixChatPage()),
+          pageBuilder: (context, state) => NoTransitionPage(child: const new_chat.ChatHomePage()),
         ),
         GoRoute(
           path: AppRoutes.profile,
@@ -757,11 +675,6 @@ class AppRouter {
         ),
         
         // ==================== AUTRES ROUTES EXISTANTES ====================
-        GoRoute(
-          path: AppRoutes.chat,
-          name: 'chat',
-          pageBuilder: (context, state) => NoTransitionPage(child: const ThixChatPage()),
-        ),
         GoRoute(
           path: AppRoutes.vault,
           name: 'vault',
