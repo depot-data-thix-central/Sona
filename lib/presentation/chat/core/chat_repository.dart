@@ -1,153 +1,164 @@
 // lib/presentation/chat/core/chat_repository.dart
-// [PARTIE] Repository : communication avec Supabase + gestion confidentiel/éphémère
+// [PARTIE] Repository : communication via Edge Functions Supabase avec token
 
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/auth/token_service.dart';
 import 'chat_models.dart';
 import 'chat_constants.dart';
 import 'chat_utils.dart';
 
 class ChatRepository {
+  // À remplacer par l'URL réelle de ton projet Supabase
+  final String _baseUrl = 'https://ton-projet.supabase.co/functions/v1';
+  
+  // Pour les appels Realtime (non modifiés car natifs à Supabase)
   final SupabaseClient _supabase = Supabase.instance.client;
 
-  // Récupérer les conversations de l'utilisateur connecté
+  // Helper pour les requêtes HTTP authentifiées avec le token
+  Future<http.Response> _authenticatedRequest(
+    String endpoint, {
+    String method = 'GET',
+    Map<String, dynamic>? body,
+  }) async {
+    final token = await TokenService.getToken();
+    final uri = Uri.parse('$_baseUrl/$endpoint');
+    final headers = {
+      'Authorization': 'Bearer $token',
+      'Content-Type': 'application/json',
+    };
+    
+    switch (method) {
+      case 'GET':
+        return await http.get(uri, headers: headers);
+      case 'POST':
+        return await http.post(uri, headers: headers, body: jsonEncode(body));
+      case 'PUT':
+        return await http.put(uri, headers: headers, body: jsonEncode(body));
+      case 'DELETE':
+        return await http.delete(uri, headers: headers);
+      default:
+        throw Exception('Méthode non supportée');
+    }
+  }
+
+  // Récupérer les conversations
   Future<List<Conversation>> fetchConversations(String userId) async {
-    final response = await _supabase
-        .from(ChatConstants.tableConversations)
-        .select('*, participants!inner(user_id)')
-        .eq('participants.user_id', userId)
-        .order('last_message_time', ascending: false);
-
-    return response.map<Conversation>((json) => Conversation.fromJson(json)).toList();
+    final response = await _authenticatedRequest('conversations?user_id=$userId');
+    if (response.statusCode != 200) {
+      throw Exception('Erreur fetchConversations: ${response.body}');
+    }
+    final List<dynamic> jsonList = jsonDecode(response.body);
+    return jsonList.map((json) => Conversation.fromJson(json)).toList();
   }
 
-  // Récupérer les messages d'une conversation (pagination)
+  // Récupérer les messages (pagination)
   Future<List<Message>> fetchMessages(String conversationId, {int limit = 50}) async {
-    final response = await _supabase
-        .from(ChatConstants.tableMessages)
-        .select()
-        .eq('conversation_id', conversationId)
-        .order('sent_at', ascending: false)
-        .limit(limit);
-
-    return response.map<Message>((json) => Message.fromJson(json)).toList();
+    final response = await _authenticatedRequest(
+      'messages?conversation_id=$conversationId&limit=$limit'
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Erreur fetchMessages: ${response.body}');
+    }
+    final List<dynamic> jsonList = jsonDecode(response.body);
+    return jsonList.map((json) => Message.fromJson(json)).toList();
   }
 
-  // Envoyer un message (générique)
+  // Envoyer un message (générique + éphémère/confidentiel)
   Future<Message> sendMessage(Message message) async {
-    final response = await _supabase
-        .from(ChatConstants.tableMessages)
-        .insert(message.toJson())
-        .select()
-        .single();
-
-    final sentMessage = Message.fromJson(response);
-
-    // Gestion spécifique éphémère
-    if (message.type == ChatConstants.messageTypeEphemeral && message.metadata != null) {
-      await _supabase.from(ChatConstants.tableEphemeralMessages).insert({
-        'message_id': sentMessage.id,
-        'duration_seconds': message.metadata![ChatConstants.metadataKeyDuration],
-        'opened_at': null,
-      });
+    final response = await _authenticatedRequest(
+      'send_message',
+      method: 'POST',
+      body: message.toJson(),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Erreur sendMessage: ${response.body}');
     }
-
-    // Gestion spécifique confidentiel
-    if (message.type == ChatConstants.messageTypeConfidential && message.metadata != null) {
-      await _supabase.from(ChatConstants.tableConfidentialMessages).insert({
-        'message_id': sentMessage.id,
-        'code_hash': message.metadata![ChatConstants.metadataKeyCodeHash],
-        'is_biometric': message.metadata![ChatConstants.metadataKeyIsBiometric] ?? false,
-        'is_opened': false,
-      });
-    }
-
-    return sentMessage;
+    final Map<String, dynamic> json = jsonDecode(response.body);
+    return Message.fromJson(json);
   }
 
-  // Vérifier le code d'un message confidentiel et le marquer comme ouvert
+  // Vérifier le code d'un message confidentiel
   Future<bool> verifyConfidentialCode(String messageId, String enteredCode) async {
-    final response = await _supabase
-        .from(ChatConstants.tableConfidentialMessages)
-        .select('code_hash, is_biometric')
-        .eq('message_id', messageId)
-        .single();
-
-    final storedHash = response['code_hash'];
-    final isBiometric = response['is_biometric'] as bool;
-
-    bool isValid = false;
-    if (isBiometric) {
-      isValid = await _authenticateWithBiometrics();
-    } else {
-      isValid = ChatUtils.hashCode(enteredCode) == storedHash;
+    final response = await _authenticatedRequest(
+      'verify_confidential',
+      method: 'POST',
+      body: {
+        'message_id': messageId,
+        'code': enteredCode,
+      },
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Erreur verifyConfidentialCode: ${response.body}');
     }
-
-    if (isValid) {
-      await _supabase
-          .from(ChatConstants.tableConfidentialMessages)
-          .update({'is_opened': true})
-          .eq('message_id', messageId);
-    }
-    return isValid;
-  }
-
-  Future<bool> _authenticateWithBiometrics() async {
-    // Implémentez avec package local_auth
-    // Pour l'exemple on retourne true (à remplacer)
-    return true;
+    final Map<String, dynamic> json = jsonDecode(response.body);
+    return json['valid'] as bool;
   }
 
   // Marquer un message comme lu
   Future<void> markAsRead(String messageId, String userId) async {
-    await _supabase.from(ChatConstants.tableReadReceipts).upsert({
-      'message_id': messageId,
-      'user_id': userId,
-      'read_at': DateTime.now().toIso8601String(),
-    });
+    final response = await _authenticatedRequest(
+      'mark_read',
+      method: 'POST',
+      body: {
+        'message_id': messageId,
+        'user_id': userId,
+      },
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Erreur markAsRead: ${response.body}');
+    }
   }
 
   // Ajouter une réaction
   Future<void> addReaction(String messageId, String reaction, String userId) async {
-    final message = await _supabase
-        .from(ChatConstants.tableMessages)
-        .select('reactions')
-        .eq('id', messageId)
-        .single();
-
-    List<String> reactions = List<String>.from(message['reactions'] ?? []);
-    if (!reactions.contains(reaction)) {
-      reactions.add(reaction);
-      await _supabase
-          .from(ChatConstants.tableMessages)
-          .update({'reactions': reactions})
-          .eq('id', messageId);
+    final response = await _authenticatedRequest(
+      'add_reaction',
+      method: 'POST',
+      body: {
+        'message_id': messageId,
+        'reaction': reaction,
+        'user_id': userId,
+      },
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Erreur addReaction: ${response.body}');
     }
   }
 
   // Supprimer un message (soft delete global ou local)
   Future<void> deleteMessage(String messageId, String userId, {bool forEveryone = false}) async {
-    if (forEveryone) {
-      await _supabase
-          .from(ChatConstants.tableMessages)
-          .update({'is_deleted': true, 'content': 'Message supprimé'})
-          .eq('id', messageId);
-    } else {
-      await _supabase.from(ChatConstants.tableDeletedMessages).insert({
+    final response = await _authenticatedRequest(
+      'delete_message',
+      method: 'POST',
+      body: {
         'message_id': messageId,
         'user_id': userId,
-      });
+        'for_everyone': forEveryone,
+      },
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Erreur deleteMessage: ${response.body}');
     }
   }
 
-  // Mettre à jour la présence
+  // Mettre à jour la présence (en ligne/hors ligne)
   Future<void> updatePresence(String userId, String status) async {
-    await _supabase.from('users').update({
-      'status': status,
-      'last_seen': DateTime.now().toIso8601String(),
-    }).eq('id', userId);
+    final response = await _authenticatedRequest(
+      'update_presence',
+      method: 'POST',
+      body: {
+        'user_id': userId,
+        'status': status,
+      },
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Erreur updatePresence: ${response.body}');
+    }
   }
 
-  // Stream en temps réel pour les nouveaux messages
+  // Stream en temps réel (reste sur SupabaseClient car Realtime est optimisé)
   Stream<Message> listenForNewMessages(String conversationId) {
     return _supabase
         .from(ChatConstants.tableMessages)
@@ -158,31 +169,34 @@ class ChatRepository {
         .map((event) => Message.fromJson(event.first));
   }
 
-  // Récupérer les stories (exemple : contacts avec stories actives)
+  // Récupérer les stories
   Future<List<Story>> fetchStories(String userId) async {
-    // À adapter selon votre logique métier
-    final response = await _supabase
-        .from('stories')
-        .select('id, user_id, users(name, avatar_url)')
-        .eq('expires_at', isNot: null)
-        .gt('expires_at', DateTime.now().toIso8601String());
-    // Transformation en Story (simplifié)
-    return response.map<Story>((json) => Story(
-      id: json['id'],
-      name: json['users']['name'],
-      avatarUrl: json['users']['avatar_url'],
-      hasNewStory: true,
-    )).toList();
+    final response = await _authenticatedRequest('stories?user_id=$userId');
+    if (response.statusCode != 200) {
+      throw Exception('Erreur fetchStories: ${response.body}');
+    }
+    final List<dynamic> jsonList = jsonDecode(response.body);
+    return jsonList.map((json) => Story.fromJson(json)).toList();
   }
 
-  // Récupérer les stats du chat
+  // Récupérer les statistiques du chat
   Future<ChatStats> fetchChatStats(String userId) async {
-    // Exemples de compteurs (à remplacer par vraies requêtes)
-    return const ChatStats(
-      onlineCount: 142,
-      newMessagesCount: 38,
-      activeMeetingsCount: 12,
-      securityAlertsCount: 7,
+    final response = await _authenticatedRequest('chat_stats?user_id=$userId');
+    if (response.statusCode != 200) {
+      throw Exception('Erreur fetchChatStats: ${response.body}');
+    }
+    final Map<String, dynamic> json = jsonDecode(response.body);
+    return ChatStats(
+      onlineCount: json['online_count'] ?? 0,
+      newMessagesCount: json['new_messages_count'] ?? 0,
+      activeMeetingsCount: json['active_meetings_count'] ?? 0,
+      securityAlertsCount: json['security_alerts_count'] ?? 0,
     );
+  }
+
+  // Méthode utilitaire pour la biométrie (inchangée)
+  Future<bool> _authenticateWithBiometrics() async {
+    // Implémentez avec le package local_auth
+    return true;
   }
 }
