@@ -1,255 +1,202 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:provider/provider.dart';
+import 'checkout_provider.dart';
+import 'shipping_method_selector.dart';
+import 'payment_method_selector.dart';
+import 'order_summary_widget.dart';
+import 'order_confirmation_page.dart';
 import '../../cart/cart_provider.dart';
 
-class CheckoutProvider extends ChangeNotifier {
-  final SupabaseClient _supabase = Supabase.instance.client;
-  
-  // États du checkout
-  bool _isLoading = false;
-  bool _isProcessing = false;
-  String _currentStep = 'address'; // address, shipping, payment, confirmation
-  
-  // Données utilisateur
-  List<Map<String, dynamic>> _savedAddresses = [];
-  Map<String, dynamic>? _selectedAddress;
-  Map<String, dynamic>? _selectedShippingMethod;
-  Map<String, dynamic>? _selectedPaymentMethod;
-  
-  // Infos utilisateur
-  Map<String, dynamic> _userInfo = {};
-  
-  // Résultat commande
-  Map<String, dynamic>? _createdOrder;
-  String? _paymentIntentId;
-  String? _paymentUrl;
+class CheckoutPage extends StatelessWidget {
+  const CheckoutPage({super.key});
 
-  // Getters
-  bool get isLoading => _isLoading;
-  bool get isProcessing => _isProcessing;
-  String get currentStep => _currentStep;
-  List<Map<String, dynamic>> get savedAddresses => _savedAddresses;
-  Map<String, dynamic>? get selectedAddress => _selectedAddress;
-  Map<String, dynamic>? get selectedShippingMethod => _selectedShippingMethod;
-  Map<String, dynamic>? get selectedPaymentMethod => _selectedPaymentMethod;
-  Map<String, dynamic> get userInfo => _userInfo;
-  Map<String, dynamic>? get createdOrder => _createdOrder;
-
-  // Charger les données initiales
-  Future<void> loadCheckoutData() async {
-    final userId = _supabase.auth.currentUser?.id;
-    if (userId == null) throw Exception('Utilisateur non connecté');
-
-    setState(() => _isLoading = true);
-    try {
-      await Future.wait([
-        _loadUserInfo(userId),
-        _loadSavedAddresses(userId),
-      ]);
-      _currentStep = 'address';
-    } catch (e) {
-      rethrow;
-    } finally {
-      setState(() => _isLoading = false);
-    }
+  @override
+  Widget build(BuildContext context) {
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => CheckoutProvider()),
+      ],
+      child: Scaffold(
+        backgroundColor: Colors.grey[50],
+        appBar: AppBar(
+          title: const Text('Validation de commande'),
+          backgroundColor: Colors.white,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ),
+        body: Consumer<CheckoutProvider>(
+          builder: (context, provider, _) {
+            if (provider.isLoading) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            
+            return _buildStepContent(provider, context);
+          },
+        ),
+      ),
+    );
   }
 
-  Future<void> _loadUserInfo(String userId) async {
-    final response = await _supabase
-        .from('users')
-        .select('id, name, email, phone, default_address_id')
-        .eq('id', userId)
-        .single();
-    _userInfo = response;
-    
-    if (_userInfo['default_address_id'] != null) {
-      _selectedAddress = _savedAddresses.firstWhere(
-        (a) => a['id'] == _userInfo['default_address_id'],
-        orElse: () => {},
-      );
-    }
-    notifyListeners();
-  }
-
-  Future<void> _loadSavedAddresses(String userId) async {
-    final response = await _supabase
-        .from('addresses')
-        .select()
-        .eq('user_id', userId)
-        .order('is_default', ascending: false);
-    _savedAddresses = List<Map<String, dynamic>>.from(response);
-    notifyListeners();
-  }
-
-  // Gestion des adresses
-  void selectAddress(Map<String, dynamic> address) {
-    _selectedAddress = address;
-    _currentStep = 'shipping';
-    notifyListeners();
-  }
-
-  Future<void> addAddress(Map<String, dynamic> newAddress) async {
-    final userId = _supabase.auth.currentUser?.id;
-    if (userId == null) return;
-
-    setState(() => _isLoading = true);
-    try {
-      final response = await _supabase
-          .from('addresses')
-          .insert({
-            ...newAddress,
-            'user_id': userId,
-            'created_at': DateTime.now().toIso8601String(),
-          })
-          .select()
-          .single();
-      _savedAddresses.insert(0, response);
-      _selectedAddress = response;
-      notifyListeners();
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  // Gestion livraison
-  void selectShippingMethod(Map<String, dynamic> method) {
-    _selectedShippingMethod = method;
-    _currentStep = 'payment';
-    notifyListeners();
-  }
-
-  // Gestion paiement
-  void selectPaymentMethod(Map<String, dynamic> method) {
-    _selectedPaymentMethod = method;
-    _currentStep = 'confirmation';
-    notifyListeners();
-  }
-
-  // Création de la commande et traitement paiement
-  Future<Map<String, dynamic>> processOrder({
-    required CartProvider cartProvider,
-    required double total,
-    required List<Map<String, dynamic>> items,
-  }) async {
-    final userId = _supabase.auth.currentUser?.id;
-    if (userId == null) throw Exception('Non connecté');
-    if (_selectedAddress == null) throw Exception('Adresse requise');
-    if (_selectedShippingMethod == null) throw Exception('Mode de livraison requis');
-    if (_selectedPaymentMethod == null) throw Exception('Moyen de paiement requis');
-
-    setState(() => _isProcessing = true);
-
-    try {
-      // 1. Créer la commande
-      final orderData = {
-        'user_id': userId,
-        'address_id': _selectedAddress!['id'],
-        'shipping_method': _selectedShippingMethod!['id'],
-        'shipping_cost': _selectedShippingMethod!['price'],
-        'total': total,
-        'status': 'pending',
-        'payment_status': 'pending',
-        'created_at': DateTime.now().toIso8601String(),
-      };
-      final orderResponse = await _supabase
-          .from('orders')
-          .insert(orderData)
-          .select()
-          .single();
-      _createdOrder = orderResponse;
-
-      // 2. Ajouter les articles de la commande
-      for (var item in items) {
-        await _supabase.from('order_items').insert({
-          'order_id': _createdOrder!['id'],
-          'product_id': item['product_id'],
-          'quantity': item['quantity'],
-          'price': item['price'],
-          'product_name': item['product_name'],
-          'product_image': item['image_url'],
-        });
-      }
-
-      // 3. Traitement du paiement selon méthode
-      final paymentResult = await _processPayment(total);
-
-      if (paymentResult['success'] == true) {
-        // Mettre à jour statut commande
-        await _supabase
-            .from('orders')
-            .update({
-              'payment_status': 'paid',
-              'status': 'processing',
-              'paid_at': DateTime.now().toIso8601String(),
-            })
-            .eq('id', _createdOrder!['id']);
-        
-        // Vider le panier
-        await cartProvider.clearCart();
-        
-        return _createdOrder!;
-      } else {
-        throw Exception(paymentResult['error'] ?? 'Paiement échoué');
-      }
-    } catch (e) {
-      rethrow;
-    } finally {
-      setState(() => _isProcessing = false);
-    }
-  }
-
-  Future<Map<String, dynamic>> _processPayment(double amount) async {
-    final method = _selectedPaymentMethod!['id'];
-    
-    switch (method) {
-      case 'card':
-        // Appel à Stripe (via Edge Function)
-        final response = await _supabase.functions.invoke('create-payment-intent', body: {
-          'amount': amount,
-          'currency': 'XOF',
-          'order_id': _createdOrder!['id'],
-        });
-        _paymentIntentId = response.data['payment_intent_id'];
-        return {'success': true, 'payment_intent_id': _paymentIntentId};
-        
-      case 'mobile_money':
-        // Appel API Mobile Money
-        final response = await _supabase.functions.invoke('mobile-money-payment', body: {
-          'amount': amount,
-          'phone': _userInfo['phone'],
-          'order_id': _createdOrder!['id'],
-        });
-        _paymentUrl = response.data['payment_url'];
-        return {'success': true, 'payment_url': _paymentUrl};
-        
-      case 'thix_money':
-        // Paiement via wallet interne
-        final response = await _supabase.rpc('deduct_wallet_balance', params: {
-          'user_id': _supabase.auth.currentUser!.id,
-          'amount': amount,
-        });
-        if (response == true) {
-          return {'success': true};
-        } else {
-          return {'success': false, 'error': 'Solde insuffisant'};
-        }
-        
+  Widget _buildStepContent(CheckoutProvider provider, BuildContext context) {
+    switch (provider.currentStep) {
+      case 'address':
+        return _AddressStep(provider: provider);
+      case 'shipping':
+        return ShippingMethodSelector(provider: provider);
+      case 'payment':
+        return PaymentMethodSelector(provider: provider);
+      case 'confirmation':
+        return OrderSummaryWidget(provider: provider);
       default:
-        return {'success': false, 'error': 'Méthode de paiement inconnue'};
+        return const SizedBox();
     }
   }
+}
 
-  void reset() {
-    _currentStep = 'address';
-    _selectedAddress = null;
-    _selectedShippingMethod = null;
-    _selectedPaymentMethod = null;
-    _createdOrder = null;
-    notifyListeners();
+// Widget pour l'étape adresse (intégré dans la même page)
+class _AddressStep extends StatelessWidget {
+  final CheckoutProvider provider;
+
+  const _AddressStep({required this.provider});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              const Text(
+                'Adresse de livraison',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              if (provider.savedAddresses.isEmpty)
+                _buildEmptyAddress(context)
+              else
+                ...provider.savedAddresses.map((addr) => _buildAddressCard(addr, provider)),
+            ],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: ElevatedButton(
+            onPressed: () => _showAddAddressDialog(context, provider),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: const Color(0xFFE5592F),
+              side: const BorderSide(color: Color(0xFFE5592F)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              minimumSize: const Size(double.infinity, 48),
+            ),
+            child: const Text('+ Ajouter une nouvelle adresse'),
+          ),
+        ),
+      ],
+    );
   }
 
-  void setState(VoidCallback fn) {
-    fn();
-    notifyListeners();
+  Widget _buildAddressCard(Map<String, dynamic> address, CheckoutProvider provider) {
+    final isSelected = provider.selectedAddress?['id'] == address['id'];
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: isSelected ? const Color(0xFFE5592F) : Colors.grey[200]!, width: isSelected ? 2 : 1),
+      ),
+      child: RadioListTile<Map<String, dynamic>>(
+        value: address,
+        groupValue: provider.selectedAddress,
+        onChanged: (value) => provider.selectAddress(value!),
+        title: Text(address['full_name'] ?? 'Destinataire'),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(address['address_line'] ?? ''),
+            Text('${address['city']}, ${address['postal_code']}'),
+            Text('Tél: ${address['phone']}'),
+          ],
+        ),
+        activeColor: const Color(0xFFE5592F),
+        contentPadding: EdgeInsets.zero,
+      ),
+    );
+  }
+
+  Widget _buildEmptyAddress(BuildContext context) {
+    return Center(
+      child: Column(
+        children: [
+          Icon(Icons.location_off, size: 48, color: Colors.grey[400]),
+          const SizedBox(height: 12),
+          Text('Aucune adresse enregistrée', style: TextStyle(color: Colors.grey[600])),
+        ],
+      ),
+    );
+  }
+
+  void _showAddAddressDialog(BuildContext context, CheckoutProvider provider) {
+    final formKey = GlobalKey<FormState>();
+    final fullNameCtrl = TextEditingController();
+    final addressCtrl = TextEditingController();
+    final cityCtrl = TextEditingController();
+    final postalCtrl = TextEditingController();
+    final phoneCtrl = TextEditingController();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => Padding(
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+          left: 16, right: 16, top: 16,
+        ),
+        child: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Nouvelle adresse', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              TextFormField(controller: fullNameCtrl, decoration: const InputDecoration(labelText: 'Nom complet'), validator: (v) => v!.isEmpty ? 'Requis' : null),
+              TextFormField(controller: addressCtrl, decoration: const InputDecoration(labelText: 'Adresse'), validator: (v) => v!.isEmpty ? 'Requis' : null),
+              TextFormField(controller: cityCtrl, decoration: const InputDecoration(labelText: 'Ville'), validator: (v) => v!.isEmpty ? 'Requis' : null),
+              TextFormField(controller: postalCtrl, decoration: const InputDecoration(labelText: 'Code postal'), validator: (v) => v!.isEmpty ? 'Requis' : null),
+              TextFormField(controller: phoneCtrl, decoration: const InputDecoration(labelText: 'Téléphone'), validator: (v) => v!.isEmpty ? 'Requis' : null),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        if (formKey.currentState!.validate()) {
+                          provider.addAddress({
+                            'full_name': fullNameCtrl.text,
+                            'address_line': addressCtrl.text,
+                            'city': cityCtrl.text,
+                            'postal_code': postalCtrl.text,
+                            'phone': phoneCtrl.text,
+                          });
+                          Navigator.pop(context);
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE5592F)),
+                      child: const Text('Ajouter'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
