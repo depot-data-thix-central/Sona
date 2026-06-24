@@ -84,6 +84,11 @@ dependencies:
   
   # Cartes Google
   google_maps_flutter: ^2.13.0
+  permission_handler: ^11.3.1
+  qr_flutter: ^4.1.0
+  local_auth: ^2.3.0
+  nfc_manager: ^3.5.0
+  agora_rtc_engine: ^6.5.2
   
   # Compression d'images
   flutter_image_compress: ^2.4.0
