@@ -86,8 +86,6 @@ import 'package:thix_id/services/ai/openai_service.dart';
 // Shared Providers
 import 'package:thix_id/presentation/shared/providers/role_provider.dart';
 
-// App Router
-import 'package:thix_id/app_router.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

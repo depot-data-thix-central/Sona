@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:collection/collection.dart';
 import '../widgets/staff_schedule_calendar.dart';
 import '../widgets/staff_absence_form.dart';
 import '../widgets/staff_role_selector.dart';
@@ -54,7 +55,7 @@ class _StaffScheduleScreenState extends ConsumerState<StaffScheduleScreen> {
           ).toList();
 
     final selectedStaff = _selectedStaffId != null
-        ? _staffList.firstWhere((s) => s.id == _selectedStaffId, orElse: () => null)
+        ? _staffList.firstWhereOrNull((s) => s.id == _selectedStaffId)
         : null;
 
     return Scaffold(

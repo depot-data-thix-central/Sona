@@ -3,6 +3,7 @@
 
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:collection/collection.dart';
 import 'chat_events.dart';
 import 'chat_states.dart';
 import 'chat_repository.dart';
@@ -85,7 +86,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     emit(ChatLoading());
     try {
       final messages = await _repository.fetchMessages(event.conversationId);
-      final pinned = messages.firstWhere((m) => m.metadata?['pinned'] == true, orElse: () => null);
+      final pinned = messages.firstWhereOrNull((m) => m.metadata?['pinned'] == true);
       emit(MessagesLoaded(
         conversationId: event.conversationId,
         messages: messages,

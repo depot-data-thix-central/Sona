@@ -58,6 +58,9 @@ dependencies:
   # Internationalization
   intl: ^0.18.1
 
+  # Collection utilities
+  collection: ^1.18.0
+
   # ==================== THIX MARKET ====================
   # Carrousel et animations
   carousel_slider: ^4.2.1
