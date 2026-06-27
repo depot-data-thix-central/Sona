@@ -1,10 +1,9 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:stripe_sdk/stripe_sdk.dart';
+import 'package:flutter_stripe/flutter_stripe.dart';
 
 class PaymentService {
   final SupabaseClient _supabase = Supabase.instance.client;
   static const String stripePublishableKey = 'pk_test_YOUR_KEY';
-  static const String stripeSecretKey = 'sk_test_YOUR_KEY';
 
   // Initialize Stripe
   Future<void> initStripe() async {

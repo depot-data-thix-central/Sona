@@ -7,6 +7,8 @@ environment:
   sdk: ">=3.6.0 <4.0.0"
 
 dependencies:
+  stripe_sdk: ^5.0.0
+  signature: ^6.0.0
   flutter:
     sdk: flutter
   flutter_localizations:
@@ -23,10 +25,10 @@ dependencies:
   go_router: ^16.3.0
   
   # Charts & graphs
-  fl_chart: ^0.68.0
+  fl_chart: 0.68.0
   
   # Supabase & backend
-  supabase_flutter: ^2.14.1
+  supabase_flutter: '>=1.10.0'
   realtime_client: ^2.7.3
   http: ^1.2.2
   
@@ -36,9 +38,9 @@ dependencies:
   path_provider: ^2.1.4
   
   # Media & files
-  video_player: ^2.9.2
+  video_player: '>=2.9.2'
   image_picker: ^1.0.5
-  file_picker: ^8.1.2
+  file_picker: '>=8.1.2'
   record: ^5.1.2
   audioplayers: ^5.2.0
   printing: ^5.13.0
@@ -48,7 +50,7 @@ dependencies:
   agora_rtc_engine: ^6.3.0
   
   # Location & NFC
-  geolocator: ^13.0.4
+  geolocator: 13.0.4
   nfc_manager: ^4.0.0
   
   # QR / Barcode
