@@ -90,8 +90,7 @@ dependencies:
   # Évaluations
   flutter_rating_bar: ^4.0.1
   
-  # Paiements
-  stripe_sdk: ^3.2.0
+  
   
   # Utilitaires
   uuid: ^4.5.1
